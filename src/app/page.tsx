@@ -81,7 +81,7 @@ export default function Home() {
   return (
     <main className="mx-auto max-w-2xl px-6 py-16">
       <div className="mb-12 text-center">
-        <h1 className="text-4xl font-normal tracking-tight" style={{ fontFamily: "var(--font-display)" }}>
+        <h1 className="text-4xl font-semibold tracking-tight">
           Meeting Summary
         </h1>
         <p className="mt-3 text-[var(--color-text-muted)]">
