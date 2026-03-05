@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import ReactMarkdown from "react-markdown";
 import { exportSummaryAsDocx } from "@/lib/exportDocx";
 
 interface SummaryViewProps {
@@ -36,8 +37,8 @@ export function SummaryView({ summary, transcript }: SummaryViewProps) {
     <div className="space-y-4">
       <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-card)] p-6 shadow-sm">
         <h2 className="mb-4 text-lg font-semibold">Summary</h2>
-        <div className="prose prose-sm max-w-none whitespace-pre-wrap text-[var(--color-text)] leading-relaxed">
-          {summary}
+        <div className="prose prose-sm max-w-none text-[var(--color-text)] leading-relaxed">
+          <ReactMarkdown>{summary}</ReactMarkdown>
         </div>
       </div>
 

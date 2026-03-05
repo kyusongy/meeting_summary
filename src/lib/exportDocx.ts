@@ -19,8 +19,16 @@ export async function exportSummaryAsDocx(summary: string, meetingDate: string):
       continue;
     }
 
-    // Headings
-    if (trimmed.startsWith("## ")) {
+    // Headings (check longest prefix first)
+    if (trimmed.startsWith("### ")) {
+      children.push(
+        new Paragraph({
+          text: trimmed.slice(4),
+          heading: HeadingLevel.HEADING_3,
+          spacing: { before: 200, after: 100 },
+        })
+      );
+    } else if (trimmed.startsWith("## ")) {
       children.push(
         new Paragraph({
           text: trimmed.slice(3),
