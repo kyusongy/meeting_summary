@@ -4,17 +4,18 @@ import { useState } from "react";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 import { RecordingIndicator } from "@/components/RecordingIndicator";
 import { AgendaInput } from "@/components/AgendaInput";
+import { SpeakerMap } from "@/components/SpeakerMap";
 import { SummaryView } from "@/components/SummaryView";
 
-type AppState = "idle" | "recording" | "processing" | "done";
+type AppState = "idle" | "recording" | "transcribing" | "mapping" | "summarizing" | "done";
 
 export default function Home() {
   const recorder = useAudioRecorder();
   const [agenda, setAgenda] = useState("");
   const [transcript, setTranscript] = useState("");
+  const [speakers, setSpeakers] = useState<number[]>([]);
   const [summary, setSummary] = useState("");
   const [appState, setAppState] = useState<AppState>("idle");
-  const [processingStep, setProcessingStep] = useState("");
   const [error, setError] = useState("");
 
   async function handleStart() {
@@ -36,32 +37,58 @@ export default function Home() {
   }
 
   async function processAudio(blob: Blob) {
-    setAppState("processing");
+    setAppState("transcribing");
 
     try {
-      setProcessingStep("Transcribing your meeting...");
       const formData = new FormData();
       formData.append("audio", blob, "meeting.webm");
-      const transcribeRes = await fetch("/api/transcribe", { method: "POST", body: formData });
-      if (!transcribeRes.ok) throw new Error("Transcription failed");
-      const { transcript: text } = await transcribeRes.json();
-      setTranscript(text);
+      const res = await fetch("/api/transcribe", { method: "POST", body: formData });
+      if (!res.ok) throw new Error("Transcription failed");
+      const data = await res.json();
+      setTranscript(data.transcript);
+      setSpeakers(data.speakers ?? []);
 
-      setProcessingStep("Generating summary...");
-      const summarizeRes = await fetch("/api/summarize", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript: text, agenda }),
-      });
-      if (!summarizeRes.ok) throw new Error("Summarization failed");
-      const { summary: sum } = await summarizeRes.json();
-      setSummary(sum);
-
-      setAppState("done");
+      // If speakers detected, let user map names; otherwise go straight to summarize
+      if (data.speakers?.length > 1) {
+        setAppState("mapping");
+      } else {
+        await summarize(data.transcript);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Processing failed");
       setAppState("idle");
     }
+  }
+
+  async function handleSpeakerConfirm(mapping: Record<number, string>) {
+    // Replace "Speaker N" labels with names in transcript
+    let mapped = transcript;
+    for (const [speaker, name] of Object.entries(mapping)) {
+      if (name.trim()) {
+        mapped = mapped.replaceAll(`Speaker ${speaker}:`, `${name.trim()}:`);
+      }
+    }
+    setTranscript(mapped);
+
+    try {
+      await summarize(mapped);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Summarization failed");
+      setAppState("idle");
+    }
+  }
+
+  async function summarize(text: string) {
+    setAppState("summarizing");
+    const res = await fetch("/api/summarize", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ transcript: text, agenda }),
+    });
+    if (!res.ok) throw new Error("Summarization failed");
+    const { summary: sum } = await res.json();
+    setSummary(sum);
+    setAppState("done");
   }
 
   // Process audio when recording stops
@@ -73,6 +100,7 @@ export default function Home() {
     recorder.reset();
     setAgenda("");
     setTranscript("");
+    setSpeakers([]);
     setSummary("");
     setAppState("idle");
     setError("");
@@ -120,11 +148,24 @@ export default function Home() {
           </div>
         )}
 
-        {/* Processing */}
-        {appState === "processing" && (
+        {/* Transcribing */}
+        {appState === "transcribing" && (
           <div className="flex flex-col items-center gap-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-card)] py-14 shadow-sm">
             <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-[var(--color-primary)]/25 border-t-[var(--color-primary)]" />
-            <p className="text-sm text-[var(--color-text-muted)]">{processingStep}</p>
+            <p className="text-sm text-[var(--color-text-muted)]">Transcribing your meeting...</p>
+          </div>
+        )}
+
+        {/* Speaker Mapping */}
+        {appState === "mapping" && (
+          <SpeakerMap speakers={speakers} onConfirm={handleSpeakerConfirm} />
+        )}
+
+        {/* Summarizing */}
+        {appState === "summarizing" && (
+          <div className="flex flex-col items-center gap-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-card)] py-14 shadow-sm">
+            <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-[var(--color-primary)]/25 border-t-[var(--color-primary)]" />
+            <p className="text-sm text-[var(--color-text-muted)]">Generating summary...</p>
           </div>
         )}
 

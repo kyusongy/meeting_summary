@@ -25,13 +25,29 @@ export async function POST(req: NextRequest) {
       language: "en",
       punctuate: true,
       paragraphs: true,
+      diarize: true,
+      utterances: true,
     });
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data = result as any;
-    const transcript = data?.results?.channels?.[0]?.alternatives?.[0]?.transcript ?? "";
 
-    return NextResponse.json({ transcript });
+    // Build speaker-labeled transcript from utterances
+    const utterances: { speaker: number; text: string }[] =
+      data?.results?.utterances?.map((u: { speaker: number; transcript: string }) => ({
+        speaker: u.speaker,
+        text: u.transcript,
+      })) ?? [];
+
+    // Collect unique speaker IDs
+    const speakers = [...new Set(utterances.map((u) => u.speaker))].sort();
+
+    // Build readable transcript with speaker labels
+    const transcript = utterances
+      .map((u) => `Speaker ${u.speaker}: ${u.text}`)
+      .join("\n");
+
+    return NextResponse.json({ transcript, speakers });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Transcription failed";
     return NextResponse.json({ error: message }, { status: 500 });
