@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
-  const apiKey = process.env.OPENROUTER_API_KEY;
-  const model = process.env.OPENROUTER_MODEL;
-  if (!apiKey || !model) {
-    return NextResponse.json({ error: "OpenRouter not configured" }, { status: 500 });
+  const baseUrl = process.env.LLM_BASE_URL;
+  const apiKey = process.env.LLM_API_KEY;
+  const model = process.env.LLM_MODEL;
+  if (!baseUrl || !apiKey || !model) {
+    return NextResponse.json({ error: "LLM provider not configured" }, { status: 500 });
   }
 
   const { transcript, agenda } = await req.json();
@@ -50,7 +51,7 @@ ${transcript}
 """`;
   }
 
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+  const response = await fetch(`${baseUrl.replace(/\/+$/, "")}/chat/completions`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -64,7 +65,7 @@ ${transcript}
 
   if (!response.ok) {
     const errorText = await response.text();
-    return NextResponse.json({ error: `OpenRouter error: ${response.status} - ${errorText}` }, { status: 500 });
+    return NextResponse.json({ error: `LLM error: ${response.status} - ${errorText}` }, { status: 500 });
   }
 
   const data = await response.json();
