@@ -42,12 +42,34 @@ export async function POST(req: NextRequest) {
     // Collect unique speaker IDs
     const speakers = [...new Set(utterances.map((u) => u.speaker))].sort();
 
-    // Build readable transcript with speaker labels
-    const transcript = utterances
-      .map((u) => `Speaker ${u.speaker}: ${u.text}`)
-      .join("\n");
+    // Group consecutive same-speaker utterances into paragraphs
+    const grouped: { speaker: number; text: string }[] = [];
+    for (const u of utterances) {
+      const last = grouped[grouped.length - 1];
+      if (last && last.speaker === u.speaker) {
+        last.text += " " + u.text;
+      } else {
+        grouped.push({ speaker: u.speaker, text: u.text });
+      }
+    }
 
-    return NextResponse.json({ transcript, speakers });
+    const transcript = grouped
+      .map((g) => `Speaker ${g.speaker}: ${g.text}`)
+      .join("\n\n");
+
+    // Extract 2-3 sample quotes per speaker for identification
+    const speakerSamples: Record<number, string[]> = {};
+    for (const s of speakers) {
+      const blocks = grouped
+        .filter((g) => g.speaker === s && g.text.length >= 20);
+      if (!blocks.length) continue;
+      const picks = [0, Math.floor(blocks.length / 2), blocks.length - 1];
+      speakerSamples[s] = [...new Set(picks)]
+        .map((i) => blocks[i].text.slice(0, 120) + (blocks[i].text.length > 120 ? "..." : ""))
+        .slice(0, 3);
+    }
+
+    return NextResponse.json({ transcript, speakers, speakerSamples });
   } catch (e) {
     const message = e instanceof Error ? e.message : "Transcription failed";
     return NextResponse.json({ error: message }, { status: 500 });

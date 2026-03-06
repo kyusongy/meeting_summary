@@ -14,6 +14,7 @@ export default function Home() {
   const [agenda, setAgenda] = useState("");
   const [transcript, setTranscript] = useState("");
   const [speakers, setSpeakers] = useState<number[]>([]);
+  const [speakerSamples, setSpeakerSamples] = useState<Record<number, string[]>>({});
   const [summary, setSummary] = useState("");
   const [appState, setAppState] = useState<AppState>("idle");
   const [error, setError] = useState("");
@@ -47,6 +48,7 @@ export default function Home() {
       const data = await res.json();
       setTranscript(data.transcript);
       setSpeakers(data.speakers ?? []);
+      setSpeakerSamples(data.speakerSamples ?? {});
 
       // If speakers detected, let user map names; otherwise go straight to summarize
       if (data.speakers?.length > 1) {
@@ -101,6 +103,7 @@ export default function Home() {
     setAgenda("");
     setTranscript("");
     setSpeakers([]);
+    setSpeakerSamples({});
     setSummary("");
     setAppState("idle");
     setError("");
@@ -158,7 +161,12 @@ export default function Home() {
 
         {/* Speaker Mapping */}
         {appState === "mapping" && (
-          <SpeakerMap speakers={speakers} onConfirm={handleSpeakerConfirm} />
+          <SpeakerMap
+            speakers={speakers}
+            speakerSamples={speakerSamples}
+            onConfirm={handleSpeakerConfirm}
+            onSkip={() => summarize(transcript)}
+          />
         )}
 
         {/* Summarizing */}

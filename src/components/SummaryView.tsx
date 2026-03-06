@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
-import { exportSummaryAsDocx } from "@/lib/exportDocx";
+import { exportSummaryAsDocx, exportTranscriptAsDocx } from "@/lib/exportDocx";
 
 interface SummaryViewProps {
   summary: string;
@@ -12,6 +12,7 @@ interface SummaryViewProps {
 export function SummaryView({ summary, transcript }: SummaryViewProps) {
   const [showTranscript, setShowTranscript] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportingTranscript, setExportingTranscript] = useState(false);
 
   async function handleExport() {
     setExporting(true);
@@ -33,6 +34,26 @@ export function SummaryView({ summary, transcript }: SummaryViewProps) {
     }
   }
 
+  async function handleTranscriptExport() {
+    setExportingTranscript(true);
+    try {
+      const date = new Date().toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+      const blob = await exportTranscriptAsDocx(transcript, date);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `meeting-transcript-${new Date().toISOString().split("T")[0]}.docx`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExportingTranscript(false);
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-card)] p-6 shadow-sm">
@@ -48,7 +69,14 @@ export function SummaryView({ summary, transcript }: SummaryViewProps) {
           disabled={exporting}
           className="rounded-xl bg-[var(--color-primary)] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--color-primary-hover)] hover:shadow-md disabled:opacity-50 active:scale-[0.98]"
         >
-          {exporting ? "Exporting..." : "Download .docx"}
+          {exporting ? "Exporting..." : "Download Summary"}
+        </button>
+        <button
+          onClick={handleTranscriptExport}
+          disabled={exportingTranscript}
+          className="rounded-xl bg-[var(--color-primary)] px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--color-primary-hover)] hover:shadow-md disabled:opacity-50 active:scale-[0.98]"
+        >
+          {exportingTranscript ? "Exporting..." : "Download Transcript"}
         </button>
         <button
           onClick={() => setShowTranscript(!showTranscript)}

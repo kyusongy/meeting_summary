@@ -20,7 +20,15 @@ export async function exportSummaryAsDocx(summary: string, meetingDate: string):
     }
 
     // Headings (check longest prefix first)
-    if (trimmed.startsWith("### ")) {
+    if (trimmed.startsWith("#### ")) {
+      children.push(
+        new Paragraph({
+          text: trimmed.slice(5),
+          heading: HeadingLevel.HEADING_4,
+          spacing: { before: 200, after: 100 },
+        })
+      );
+    } else if (trimmed.startsWith("### ")) {
       children.push(
         new Paragraph({
           text: trimmed.slice(4),
@@ -73,6 +81,56 @@ export async function exportSummaryAsDocx(summary: string, meetingDate: string):
       children.push(
         new Paragraph({
           children: parseBoldRuns(trimmed),
+        })
+      );
+    }
+  }
+
+  const doc = new Document({
+    sections: [{ children }],
+  });
+
+  return Packer.toBlob(doc);
+}
+
+export async function exportTranscriptAsDocx(transcript: string, meetingDate: string): Promise<Blob> {
+  const children: Paragraph[] = [];
+
+  children.push(
+    new Paragraph({
+      text: `Meeting Transcript - ${meetingDate}`,
+      heading: HeadingLevel.HEADING_1,
+      spacing: { after: 300 },
+    })
+  );
+
+  const turns = transcript.split("\n\n").filter(Boolean);
+  for (const turn of turns) {
+    const colonIdx = turn.indexOf(":");
+    if (colonIdx !== -1) {
+      const speaker = turn.slice(0, colonIdx);
+      const content = turn.slice(colonIdx + 1).trim();
+      // Speaker name as its own small heading-like line
+      children.push(
+        new Paragraph({
+          children: [
+            new TextRun({ text: speaker, bold: true, size: 22 }),
+          ],
+          spacing: { before: 240, after: 40 },
+        })
+      );
+      // Content as normal paragraph below
+      children.push(
+        new Paragraph({
+          children: parseBoldRuns(content),
+          spacing: { after: 120 },
+        })
+      );
+    } else {
+      children.push(
+        new Paragraph({
+          children: parseBoldRuns(turn),
+          spacing: { after: 120 },
         })
       );
     }

@@ -1,36 +1,61 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Meeting Summary
 
-## Getting Started
+Record a meeting, get an AI-powered summary with action items. One-click start/stop, speaker identification, and .docx export.
 
-First, run the development server:
+Built for capturing Teams/Zoom meetings via browser tab sharing — hit Start before a meeting, Stop after, and get a structured summary.
+
+## How it works
+
+1. Click **Start Recording** — share your meeting tab with system audio
+2. Microphone is captured automatically for your voice
+3. Click **Stop Recording** when done
+4. Audio is transcribed via [Deepgram](https://deepgram.com/) (speaker diarization included)
+5. Name the detected speakers (optional)
+6. An LLM generates a structured summary via [OpenRouter](https://openrouter.ai/)
+7. Download the summary or transcript as .docx
+
+If you paste a meeting agenda before recording, the summary is organized around those topics.
+
+## Setup
+
+```bash
+git clone https://github.com/kyusongy/meeting_summary.git
+cd meeting_summary
+npm install
+cp .env.example .env.local
+```
+
+Fill in your API keys in `.env.local`:
+
+| Variable | Where to get it |
+|---|---|
+| `DEEPGRAM_API_KEY` | [console.deepgram.com](https://console.deepgram.com/) |
+| `OPENROUTER_API_KEY` | [openrouter.ai/keys](https://openrouter.ai/keys) |
+| `OPENROUTER_MODEL` | Any model on OpenRouter (default: `x-ai/grok-4.1-fast`) |
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [localhost:3000](http://localhost:3000) in Chrome.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Deploy
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Deploy to Vercel and set the three environment variables above in the Vercel dashboard.
 
-## Learn More
+## Tech
 
-To learn more about Next.js, take a look at the following resources:
+- Next.js (App Router)
+- Tailwind CSS v4
+- Deepgram Nova-3 for transcription
+- OpenRouter for summarization
+- `docx` package for .docx export
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Requirements
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- Chrome (uses `getDisplayMedia` for system audio capture)
+- Desktop only — no mobile support
 
-## Deploy on Vercel
+## License
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+MIT
