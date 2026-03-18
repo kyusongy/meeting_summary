@@ -7,7 +7,7 @@ import { AgendaInput } from "@/components/AgendaInput";
 import { SpeakerMap } from "@/components/SpeakerMap";
 import { SummaryView } from "@/components/SummaryView";
 
-type AppState = "idle" | "recording" | "transcribing" | "mapping" | "summarizing" | "done";
+type AppState = "idle" | "recording" | "transcribing" | "mapping" | "summarizing" | "summary-failed" | "done";
 
 export default function Home() {
   const recorder = useAudioRecorder();
@@ -71,26 +71,26 @@ export default function Home() {
       }
     }
     setTranscript(mapped);
-
-    try {
-      await summarize(mapped);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Summarization failed");
-      setAppState("idle");
-    }
+    await summarize(mapped);
   }
 
   async function summarize(text: string) {
     setAppState("summarizing");
-    const res = await fetch("/api/summarize", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ transcript: text, agenda }),
-    });
-    if (!res.ok) throw new Error("Summarization failed");
-    const { summary: sum } = await res.json();
-    setSummary(sum);
-    setAppState("done");
+    setError("");
+    try {
+      const res = await fetch("/api/summarize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript: text, agenda }),
+      });
+      if (!res.ok) throw new Error("Summarization failed");
+      const { summary: sum } = await res.json();
+      setSummary(sum);
+      setAppState("done");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Summarization failed");
+      setAppState("summary-failed");
+    }
   }
 
   // Process audio when recording stops
@@ -174,6 +174,30 @@ export default function Home() {
           <div className="flex flex-col items-center gap-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-card)] py-14 shadow-sm">
             <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-[var(--color-primary)]/25 border-t-[var(--color-primary)]" />
             <p className="text-sm text-[var(--color-text-muted)]">Generating summary...</p>
+          </div>
+        )}
+
+        {/* Summary failed — show transcript + retry */}
+        {appState === "summary-failed" && (
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-card)] p-6 shadow-sm">
+              <h3 className="mb-3 text-sm font-semibold text-[var(--color-text-muted)]">Transcript</h3>
+              <p className="whitespace-pre-wrap text-sm leading-relaxed">{transcript}</p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => summarize(transcript)}
+                className="flex-1 rounded-2xl bg-[var(--color-primary)] py-3 text-sm font-semibold text-white shadow-md transition-all hover:bg-[var(--color-primary-hover)] hover:shadow-lg active:scale-[0.98]"
+              >
+                Retry Summary
+              </button>
+              <button
+                onClick={handleNewMeeting}
+                className="flex-1 rounded-2xl border border-[var(--color-border)] py-3 text-sm font-medium transition hover:bg-[var(--color-border)]/50"
+              >
+                New Meeting
+              </button>
+            </div>
           </div>
         )}
 
