@@ -53,25 +53,51 @@ ${transcript}
 """`;
   }
 
-  const response = await fetch(`${baseUrl.replace(/\/+$/, "")}/chat/completions`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      messages: [{ role: "user", content: prompt }],
-    }),
+  const url = `${baseUrl.replace(/\/+$/, "")}/chat/completions`;
+  const body = JSON.stringify({
+    model,
+    messages: [{ role: "user", content: prompt }],
   });
+  const headers = {
+    Authorization: `Bearer ${apiKey}`,
+    "Content-Type": "application/json",
+  };
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    return NextResponse.json({ error: `LLM error: ${response.status} - ${errorText}` }, { status: 500 });
+  let lastError: unknown;
+  const maxRetries = 3;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 240_000); // 4 min
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers,
+        body,
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        return NextResponse.json({ error: `LLM error: ${response.status} - ${errorText}` }, { status: 500 });
+      }
+
+      const data = await response.json();
+      const summary = data.choices?.[0]?.message?.content ?? "";
+      return NextResponse.json({ summary });
+    } catch (err: unknown) {
+      lastError = err;
+      const isRetryable =
+        err instanceof Error &&
+        (err.name === "AbortError" || (err as NodeJS.ErrnoException).code === "ECONNRESET");
+      if (!isRetryable || attempt === maxRetries - 1) break;
+      // Brief backoff before retry
+      await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+    }
   }
 
-  const data = await response.json();
-  const summary = data.choices?.[0]?.message?.content ?? "";
-
-  return NextResponse.json({ summary });
+  const msg = lastError instanceof Error ? lastError.message : "Unknown error";
+  return NextResponse.json({ error: `LLM request failed after ${maxRetries} attempts: ${msg}` }, { status: 502 });
 }
