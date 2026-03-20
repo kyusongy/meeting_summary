@@ -171,9 +171,15 @@ export default function Home() {
 
         {/* Summarizing */}
         {appState === "summarizing" && (
-          <div className="flex flex-col items-center gap-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-card)] py-14 shadow-sm">
-            <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-[var(--color-primary)]/25 border-t-[var(--color-primary)]" />
-            <p className="text-sm text-[var(--color-text-muted)]">Generating summary...</p>
+          <div className="space-y-4">
+            <div className="flex flex-col items-center gap-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-card)] py-14 shadow-sm">
+              <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-[var(--color-primary)]/25 border-t-[var(--color-primary)]" />
+              <p className="text-sm text-[var(--color-text-muted)]">Generating summary...</p>
+            </div>
+            <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-card)] p-6 shadow-sm">
+              <h3 className="mb-3 text-sm font-semibold text-[var(--color-text-muted)]">Transcript</h3>
+              <p className="whitespace-pre-wrap text-sm leading-relaxed">{transcript}</p>
+            </div>
           </div>
         )}
 
