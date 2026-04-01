@@ -7,7 +7,7 @@ import { AgendaInput } from "@/components/AgendaInput";
 import { SpeakerMap } from "@/components/SpeakerMap";
 import { SummaryView } from "@/components/SummaryView";
 
-type AppState = "idle" | "recording" | "transcribing" | "mapping" | "summarizing" | "summary-failed" | "done";
+type AppState = "idle" | "recording" | "transcribing" | "transcription-failed" | "mapping" | "summarizing" | "summary-failed" | "done";
 
 export default function Home() {
   const recorder = useAudioRecorder();
@@ -57,8 +57,8 @@ export default function Home() {
         await summarize(data.transcript);
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Processing failed");
-      setAppState("idle");
+      setError(e instanceof Error ? e.message : "Transcription failed");
+      setAppState("transcription-failed");
     }
   }
 
@@ -156,6 +156,29 @@ export default function Home() {
           <div className="flex flex-col items-center gap-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-card)] py-14 shadow-sm">
             <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-[var(--color-primary)]/25 border-t-[var(--color-primary)]" />
             <p className="text-sm text-[var(--color-text-muted)]">Transcribing your meeting...</p>
+          </div>
+        )}
+
+        {/* Transcription failed — retry with same audio */}
+        {appState === "transcription-failed" && (
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-red-200 bg-red-50 px-6 py-4 text-sm text-red-700">
+              Transcription failed. You can retry without re-recording.
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => recorder.audioBlob && processAudio(recorder.audioBlob)}
+                className="flex-1 rounded-2xl bg-[var(--color-primary)] py-3 text-sm font-semibold text-white shadow-md transition-all hover:bg-[var(--color-primary-hover)] hover:shadow-lg active:scale-[0.98]"
+              >
+                Retry Transcription
+              </button>
+              <button
+                onClick={handleNewMeeting}
+                className="flex-1 rounded-2xl border border-[var(--color-border)] py-3 text-sm font-medium transition hover:bg-[var(--color-border)]/50"
+              >
+                New Meeting
+              </button>
+            </div>
           </div>
         )}
 
