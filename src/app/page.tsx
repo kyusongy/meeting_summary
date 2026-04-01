@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAudioRecorder } from "@/hooks/useAudioRecorder";
 import { RecordingIndicator } from "@/components/RecordingIndicator";
 import { AgendaInput } from "@/components/AgendaInput";
@@ -39,6 +39,7 @@ export default function Home() {
 
   async function processAudio(blob: Blob) {
     setAppState("transcribing");
+    setError("");
 
     try {
       const formData = new FormData();
@@ -94,9 +95,11 @@ export default function Home() {
   }
 
   // Process audio when recording stops
-  if (recorder.state === "stopped" && recorder.audioBlob && appState === "recording") {
-    processAudio(recorder.audioBlob);
-  }
+  useEffect(() => {
+    if (recorder.state === "stopped" && recorder.audioBlob && appState === "recording") {
+      processAudio(recorder.audioBlob);
+    }
+  }, [recorder.state, recorder.audioBlob, appState]);
 
   function handleNewMeeting() {
     recorder.reset();
@@ -243,8 +246,8 @@ export default function Home() {
           </>
         )}
 
-        {/* Error */}
-        {error && (
+        {/* Error — only show in states without dedicated error UI */}
+        {error && appState !== "transcription-failed" && appState !== "summary-failed" && (
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
             {error}
           </div>
