@@ -29,10 +29,11 @@ Fill in your API keys in `.env.local`:
 
 | Variable | Description |
 |---|---|
+| `APP_PASSWORD` | Shared password to open the app. **Required** — without it the app serves 503 to everyone. |
 | `DEEPGRAM_API_KEY` | [console.deepgram.com](https://console.deepgram.com/) |
 | `LLM_BASE_URL` | Any OpenAI-compatible API (e.g. `https://openrouter.ai/api/v1`, `https://api.openai.com/v1`) |
 | `LLM_API_KEY` | API key for your LLM provider |
-| `LLM_MODEL` | Model ID (e.g. `gpt-4o`, `x-ai/grok-4.1-fast`) |
+| `LLM_MODEL` | Model ID (e.g. `deepseek/deepseek-v4-flash`) |
 
 ```bash
 npm run dev
@@ -40,16 +41,36 @@ npm run dev
 
 Open [localhost:3000](http://localhost:3000) in Chrome.
 
+## Access control
+
+The whole app sits behind a single shared password (`APP_PASSWORD`), enforced in
+`src/proxy.ts` for both pages and API routes. Signing in sets a year-long signed
+cookie, so it's a one-time step per device. It fails closed: no password
+configured means nobody gets in — the deployment is a public URL in front of
+paid API keys.
+
 ## Deploy
 
-Deploy to Vercel and set the three environment variables above in the Vercel dashboard.
+Self-hosted on an Oracle Cloud VM behind a Cloudflare Tunnel. The box has under
+1 GB of RAM and can't run `next build`, so the build happens locally and only
+the standalone output ships:
+
+```bash
+./deploy.sh
+```
+
+That builds, rsyncs `.next/standalone` to `/opt/meeting-notes`, installs
+`.env.local` as root-only `/etc/meeting-notes.env`, and restarts the
+`meeting-notes` systemd unit (bound to `127.0.0.1:3000`, capped at 400 MB).
+
+Logs: `ssh oracle journalctl -u meeting-notes -f`
 
 ## Tech
 
-- Next.js (App Router)
+- Next.js 16 (App Router)
 - Tailwind CSS v4
-- Deepgram Nova-3 for transcription
-- Any OpenAI-compatible API for summarization (OpenRouter, OpenAI, Ollama, etc.)
+- Deepgram Nova-3 for transcription (English, speaker diarization)
+- Any OpenAI-compatible API for summarization — currently DeepSeek V4 Flash via OpenRouter
 - `docx` package for .docx export
 
 ## Requirements
