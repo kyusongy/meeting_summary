@@ -14,8 +14,8 @@ const display = Instrument_Serif({
 });
 
 export const metadata: Metadata = {
-  title: "Meeting Summary",
-  description: "Record meetings and get AI-powered summaries",
+  title: "Meeting Notes",
+  description: "Record a meeting and get a written summary",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

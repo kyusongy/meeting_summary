@@ -1,16 +1,33 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useAudioRecorder } from "@/hooks/useAudioRecorder";
+import { useAudioRecorder, NoAudioTrackError } from "@/hooks/useAudioRecorder";
+import { useSupported } from "@/hooks/useSupported";
 import { RecordingIndicator } from "@/components/RecordingIndicator";
 import { AgendaInput } from "@/components/AgendaInput";
+import { ShareInstructions } from "@/components/ShareInstructions";
+import { ProcessingView } from "@/components/ProcessingView";
 import { SpeakerMap } from "@/components/SpeakerMap";
 import { SummaryView } from "@/components/SummaryView";
+import { postForm, postJson } from "@/lib/api";
+import { downloadBlob, today } from "@/lib/download";
 
-type AppState = "idle" | "recording" | "transcribing" | "transcription-failed" | "mapping" | "summarizing" | "summary-failed" | "done";
+type AppState =
+  | "idle"
+  | "recording"
+  | "transcribing"
+  | "transcription-failed"
+  | "mapping"
+  | "summarizing"
+  | "summary-failed"
+  | "done";
+
+/** States where navigating away would throw away real work. */
+const BUSY: AppState[] = ["recording", "transcribing", "summarizing"];
 
 export default function Home() {
   const recorder = useAudioRecorder();
+  const supported = useSupported();
   const [agenda, setAgenda] = useState("");
   const [transcript, setTranscript] = useState("");
   const [speakers, setSpeakers] = useState<number[]>([]);
@@ -25,51 +42,39 @@ export default function Home() {
       await recorder.start();
       setAppState("recording");
     } catch (e) {
+      // Closing the share dialog is a normal choice, not an error worth showing.
+      if (e instanceof DOMException && e.name === "NotAllowedError") return;
       setError(
-        e instanceof Error
+        e instanceof NoAudioTrackError || e instanceof Error
           ? e.message
-          : "Failed to start recording. Please allow screen sharing with system audio."
+          : "Couldn’t start recording."
       );
     }
-  }
-
-  async function handleStop() {
-    recorder.stop();
   }
 
   async function processAudio(blob: Blob) {
     setAppState("transcribing");
     setError("");
-
     try {
-      const formData = new FormData();
-      formData.append("audio", blob, "meeting.webm");
-      const res = await fetch("/api/transcribe", { method: "POST", body: formData });
-      if (!res.ok) throw new Error("Transcription failed");
-      const data = await res.json();
+      const form = new FormData();
+      form.append("audio", blob, "meeting.webm");
+      const data = await postForm("/api/transcribe", form);
       setTranscript(data.transcript);
       setSpeakers(data.speakers ?? []);
       setSpeakerSamples(data.speakerSamples ?? {});
 
-      // If speakers detected, let user map names; otherwise go straight to summarize
-      if (data.speakers?.length > 1) {
-        setAppState("mapping");
-      } else {
-        await summarize(data.transcript);
-      }
+      if (data.speakers?.length > 1) setAppState("mapping");
+      else await summarize(data.transcript);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Transcription failed");
+      setError(e instanceof Error ? e.message : "Transcription failed.");
       setAppState("transcription-failed");
     }
   }
 
   async function handleSpeakerConfirm(mapping: Record<number, string>) {
-    // Replace "Speaker N" labels with names in transcript
     let mapped = transcript;
     for (const [speaker, name] of Object.entries(mapping)) {
-      if (name.trim()) {
-        mapped = mapped.replaceAll(`Speaker ${speaker}:`, `${name.trim()}:`);
-      }
+      if (name.trim()) mapped = mapped.replaceAll(`Speaker ${speaker}:`, `${name.trim()}:`);
     }
     setTranscript(mapped);
     await summarize(mapped);
@@ -79,27 +84,14 @@ export default function Home() {
     setAppState("summarizing");
     setError("");
     try {
-      const res = await fetch("/api/summarize", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcript: text, agenda }),
-      });
-      if (!res.ok) throw new Error("Summarization failed");
-      const { summary: sum } = await res.json();
+      const { summary: sum } = await postJson("/api/summarize", { transcript: text, agenda });
       setSummary(sum);
       setAppState("done");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Summarization failed");
+      setError(e instanceof Error ? e.message : "Summarization failed.");
       setAppState("summary-failed");
     }
   }
-
-  // Process audio when recording stops
-  useEffect(() => {
-    if (recorder.state === "stopped" && recorder.audioBlob && appState === "recording") {
-      processAudio(recorder.audioBlob);
-    }
-  }, [recorder.state, recorder.audioBlob, appState]);
 
   function handleNewMeeting() {
     recorder.reset();
@@ -112,41 +104,91 @@ export default function Home() {
     setError("");
   }
 
+  // Kick off processing once the recorder has flushed its final chunk.
+  useEffect(() => {
+    if (recorder.state === "stopped" && recorder.audioBlob && appState === "recording") {
+      processAudio(recorder.audioBlob);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recorder.state, recorder.audioBlob, appState]);
+
+  // A stray tab close mid-meeting loses the whole recording.
+  useEffect(() => {
+    if (!BUSY.includes(appState)) return;
+    const warn = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [appState]);
+
+  if (supported === false) {
+    return (
+      <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6 text-center">
+        <h1 className="font-[family-name:var(--font-display)] text-3xl">
+          Please open this in Chrome
+        </h1>
+        <p className="mt-4 text-sm leading-relaxed text-[var(--color-text-muted)]">
+          Recording a meeting needs desktop Chrome or Edge on a computer. Phones
+          and tablets can’t capture meeting audio, and neither can Safari.
+        </p>
+      </main>
+    );
+  }
+
   return (
     <main className="mx-auto max-w-2xl px-6 py-16">
       <div className="mb-12 text-center">
-        <h1 className="text-4xl font-semibold tracking-tight">
-          Meeting Summary
+        <h1 className="font-[family-name:var(--font-display)] text-5xl tracking-tight">
+          Meeting Notes
         </h1>
         <p className="mt-3 text-[var(--color-text-muted)]">
-          Record your meeting and get an instant summary
+          Record your meeting and get a written summary
         </p>
       </div>
 
       <div className="space-y-6">
-        {/* Agenda */}
         {(appState === "idle" || appState === "recording") && (
-          <AgendaInput value={agenda} onChange={setAgenda} disabled={appState === "recording"} />
+          <AgendaInput
+            value={agenda}
+            onChange={setAgenda}
+            disabled={appState === "recording"}
+          />
         )}
 
-        {/* Start */}
         {appState === "idle" && (
-          <button
-            onClick={handleStart}
-            className="w-full rounded-2xl bg-[var(--color-primary)] py-4 text-lg font-semibold text-white shadow-md transition-all hover:bg-[var(--color-primary-hover)] hover:shadow-lg active:scale-[0.98]"
-          >
-            Start Recording
-          </button>
+          <>
+            <ShareInstructions />
+            <button
+              onClick={handleStart}
+              className="w-full rounded-2xl bg-[var(--color-primary)] py-4 text-lg font-semibold text-white shadow-md transition-all hover:bg-[var(--color-primary-hover)] hover:shadow-lg active:scale-[0.98]"
+            >
+              Start Recording
+            </button>
+          </>
         )}
 
-        {/* Recording */}
         {appState === "recording" && (
           <div className="space-y-4">
             <div className="flex items-center justify-between rounded-2xl border border-[var(--color-recording)]/20 bg-[var(--color-recording)]/5 px-6 py-4">
               <RecordingIndicator duration={recorder.duration} />
             </div>
+
+            {recorder.silent && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm leading-relaxed text-amber-800">
+                <strong className="font-semibold">No sound yet.</strong> Stop the
+                recording and start again, making sure you pick the meeting tab and
+                turn on “Also share tab audio”.
+              </div>
+            )}
+
+            {!recorder.hasMic && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm leading-relaxed text-amber-800">
+                Your microphone isn’t being recorded, so your own voice won’t appear
+                in the notes. Everyone else in the meeting will.
+              </div>
+            )}
+
             <button
-              onClick={handleStop}
+              onClick={recorder.stop}
               className="w-full rounded-2xl bg-[var(--color-success)] py-4 text-lg font-semibold text-white shadow-md transition-all hover:bg-[var(--color-success-hover)] hover:shadow-lg active:scale-[0.98]"
             >
               Stop Recording
@@ -154,38 +196,45 @@ export default function Home() {
           </div>
         )}
 
-        {/* Transcribing */}
         {appState === "transcribing" && (
-          <div className="flex flex-col items-center gap-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-card)] py-14 shadow-sm">
-            <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-[var(--color-primary)]/25 border-t-[var(--color-primary)]" />
-            <p className="text-sm text-[var(--color-text-muted)]">Transcribing your meeting...</p>
-          </div>
+          <ProcessingView
+            label="Writing down what was said…"
+            reassurance="Long meetings take a few minutes. Please leave this tab open."
+          />
         )}
 
-        {/* Transcription failed — retry with same audio */}
         {appState === "transcription-failed" && (
           <div className="space-y-4">
-            <div className="rounded-2xl border border-red-200 bg-red-50 px-6 py-4 text-sm text-red-700">
-              Transcription failed. You can retry without re-recording.
+            <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm leading-relaxed text-red-700">
+              {error}
             </div>
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-3">
               <button
                 onClick={() => recorder.audioBlob && processAudio(recorder.audioBlob)}
                 className="flex-1 rounded-2xl bg-[var(--color-primary)] py-3 text-sm font-semibold text-white shadow-md transition-all hover:bg-[var(--color-primary-hover)] hover:shadow-lg active:scale-[0.98]"
               >
-                Retry Transcription
+                Try Again
               </button>
               <button
                 onClick={handleNewMeeting}
                 className="flex-1 rounded-2xl border border-[var(--color-border)] py-3 text-sm font-medium transition hover:bg-[var(--color-border)]/50"
               >
-                New Meeting
+                Start Over
               </button>
             </div>
+            {recorder.audioBlob && (
+              <button
+                onClick={() =>
+                  downloadBlob(recorder.audioBlob!, `meeting-recording-${today()}.webm`)
+                }
+                className="w-full text-center text-xs text-[var(--color-text-muted)] underline underline-offset-4 hover:text-[var(--color-text)]"
+              >
+                Save the audio to your computer just in case
+              </button>
+            )}
           </div>
         )}
 
-        {/* Speaker Mapping */}
         {appState === "mapping" && (
           <SpeakerMap
             speakers={speakers}
@@ -195,45 +244,36 @@ export default function Home() {
           />
         )}
 
-        {/* Summarizing */}
         {appState === "summarizing" && (
           <div className="space-y-4">
-            <div className="flex flex-col items-center gap-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-card)] py-14 shadow-sm">
-              <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-[var(--color-primary)]/25 border-t-[var(--color-primary)]" />
-              <p className="text-sm text-[var(--color-text-muted)]">Generating summary...</p>
-            </div>
-            <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-card)] p-6 shadow-sm">
-              <h3 className="mb-3 text-sm font-semibold text-[var(--color-text-muted)]">Transcript</h3>
-              <p className="whitespace-pre-wrap text-sm leading-relaxed">{transcript}</p>
-            </div>
+            <ProcessingView label="Writing your summary…" />
+            <TranscriptCard transcript={transcript} />
           </div>
         )}
 
-        {/* Summary failed — show transcript + retry */}
         {appState === "summary-failed" && (
           <div className="space-y-4">
-            <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-card)] p-6 shadow-sm">
-              <h3 className="mb-3 text-sm font-semibold text-[var(--color-text-muted)]">Transcript</h3>
-              <p className="whitespace-pre-wrap text-sm leading-relaxed">{transcript}</p>
+            <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm leading-relaxed text-red-700">
+              {error}
             </div>
+            <TranscriptCard transcript={transcript} />
             <div className="flex gap-3">
               <button
                 onClick={() => summarize(transcript)}
                 className="flex-1 rounded-2xl bg-[var(--color-primary)] py-3 text-sm font-semibold text-white shadow-md transition-all hover:bg-[var(--color-primary-hover)] hover:shadow-lg active:scale-[0.98]"
               >
-                Retry Summary
+                Try Again
               </button>
               <button
                 onClick={handleNewMeeting}
                 className="flex-1 rounded-2xl border border-[var(--color-border)] py-3 text-sm font-medium transition hover:bg-[var(--color-border)]/50"
               >
-                New Meeting
+                Start Over
               </button>
             </div>
           </div>
         )}
 
-        {/* Results */}
         {appState === "done" && (
           <>
             <SummaryView summary={summary} transcript={transcript} />
@@ -246,13 +286,24 @@ export default function Home() {
           </>
         )}
 
-        {/* Error — only show in states without dedicated error UI */}
+        {/* States above render their own error UI. */}
         {error && appState !== "transcription-failed" && appState !== "summary-failed" && (
-          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-relaxed text-red-700">
             {error}
           </div>
         )}
       </div>
     </main>
+  );
+}
+
+function TranscriptCard({ transcript }: { transcript: string }) {
+  return (
+    <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-card)] p-6 shadow-sm">
+      <h3 className="mb-3 text-sm font-semibold text-[var(--color-text-muted)]">
+        Transcript
+      </h3>
+      <p className="whitespace-pre-wrap text-sm leading-relaxed">{transcript}</p>
+    </div>
   );
 }

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { exportSummaryAsDocx, exportTranscriptAsDocx } from "@/lib/exportDocx";
+import { downloadBlob, today, longDate } from "@/lib/download";
 
 interface SummaryViewProps {
   summary: string;
@@ -17,18 +18,8 @@ export function SummaryView({ summary, transcript }: SummaryViewProps) {
   async function handleExport() {
     setExporting(true);
     try {
-      const date = new Date().toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      });
-      const blob = await exportSummaryAsDocx(summary, date);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `meeting-summary-${new Date().toISOString().split("T")[0]}.docx`;
-      a.click();
-      URL.revokeObjectURL(url);
+      const blob = await exportSummaryAsDocx(summary, longDate());
+      downloadBlob(blob, `meeting-summary-${today()}.docx`);
     } finally {
       setExporting(false);
     }
@@ -37,18 +28,8 @@ export function SummaryView({ summary, transcript }: SummaryViewProps) {
   async function handleTranscriptExport() {
     setExportingTranscript(true);
     try {
-      const date = new Date().toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      });
-      const blob = await exportTranscriptAsDocx(transcript, date);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `meeting-transcript-${new Date().toISOString().split("T")[0]}.docx`;
-      a.click();
-      URL.revokeObjectURL(url);
+      const blob = await exportTranscriptAsDocx(transcript, longDate());
+      downloadBlob(blob, `meeting-transcript-${today()}.docx`);
     } finally {
       setExportingTranscript(false);
     }
