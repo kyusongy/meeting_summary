@@ -17,37 +17,58 @@ export async function POST(req: NextRequest) {
 
   let prompt: string;
 
+  // Headings are pinned to `##` because the .docx exporter maps them to Word
+  // heading styles; free-form output exports as an unreadable flat wall.
+  const RULES = `Output only the summary itself. No preamble, no commentary, no closing remarks.
+Write in English using markdown. Use "##" for every section heading.
+Omit a section entirely if the meeting contained nothing for it — never write "None" or "N/A".
+Only state things that were actually said; do not infer or invent.`;
+
   if (agenda?.trim()) {
-    prompt = `Output only the requested content. No introductions, explanations, or commentary.
+    prompt = `${RULES}
 
-You are summarizing a meeting transcript. The meeting had a pre-defined agenda. Organize the summary around the agenda items.
+Summarize this meeting, organized around the agenda below.
 
-## Agenda
+Structure:
+## <agenda item name>
+One short paragraph on what was discussed. Put any decision in **bold**.
+(repeat for each agenda item)
+
+## Other Topics
+Anything substantive discussed outside the agenda.
+
+## Action Items
+Every task anyone committed to, from anywhere in the meeting, as "- [ ] Task — Owner".
+
+## Key Takeaways
+3-5 bullets.
+
+# Agenda
 ${agenda}
 
-## Instructions
-For each agenda item, write:
-- A brief summary of what was discussed
-- Any decisions made (in bold)
-- Action items (as a checklist with owner if mentioned)
-
-Then add a section called "Other Topics" for anything discussed outside the agenda.
-
-End with a "Key Takeaways" section (3-5 bullet points).
-
-## Transcript
+# Transcript
 """
 ${transcript}
 """`;
   } else {
-    prompt = `Output only the requested content. No introductions, explanations, or commentary.
+    prompt = `${RULES}
 
-Write a concise summary of this meeting transcript in English using markdown. Include:
-- A short overview paragraph
-- 3-5 key takeaways as bullet points
-- **Decisions** highlighted in bold
-- Action items as a checklist (with owner if mentioned)
+Summarize this meeting.
 
+Structure:
+## Overview
+One short paragraph.
+
+## Key Takeaways
+3-5 bullets.
+
+## Decisions
+Each decision in **bold**.
+
+## Action Items
+"- [ ] Task — Owner" for each.
+
+# Transcript
 """
 ${transcript}
 """`;
@@ -77,14 +98,32 @@ ${transcript}
 
     if (!response.ok) {
       const errorText = await response.text();
-      return NextResponse.json({ error: `LLM error: ${response.status} - ${errorText}` }, { status: 500 });
+      console.error(`LLM ${response.status}: ${errorText}`);
+      return NextResponse.json(
+        { error: `The summarizer returned an error (${response.status}). Your transcript is safe — try again.` },
+        { status: 502 }
+      );
     }
 
     const data = await response.json();
-    const summary = data.choices?.[0]?.message?.content ?? "";
+    const summary = data.choices?.[0]?.message?.content?.trim() ?? "";
+    if (!summary) {
+      return NextResponse.json(
+        { error: "The summarizer returned nothing. Your transcript is safe — try again." },
+        { status: 502 }
+      );
+    }
     return NextResponse.json({ summary });
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ error: `LLM request failed: ${msg}` }, { status: 502 });
+    console.error("LLM request failed:", err);
+    const aborted = err instanceof Error && err.name === "AbortError";
+    return NextResponse.json(
+      {
+        error: aborted
+          ? "The summary took too long and timed out. Your transcript is safe — try again."
+          : "Couldn’t reach the summarizer. Your transcript is safe — try again.",
+      },
+      { status: 502 }
+    );
   }
 }

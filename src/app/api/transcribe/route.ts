@@ -3,6 +3,12 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const maxDuration = 300; // 5 min timeout for long audio
 
+/**
+ * 3h at our 32 kbps capture is ~43 MB. The server has under 1 GB of RAM and
+ * buffers the upload, so refuse anything far past that rather than OOM.
+ */
+const MAX_AUDIO_BYTES = 100 * 1024 * 1024;
+
 export async function POST(req: NextRequest) {
   const apiKey = process.env.DEEPGRAM_API_KEY;
   if (!apiKey) {
@@ -13,6 +19,18 @@ export async function POST(req: NextRequest) {
   const audioFile = formData.get("audio") as File | null;
   if (!audioFile) {
     return NextResponse.json({ error: "No audio file provided" }, { status: 400 });
+  }
+  if (audioFile.size === 0) {
+    return NextResponse.json(
+      { error: "The recording is empty. Nothing was captured." },
+      { status: 400 }
+    );
+  }
+  if (audioFile.size > MAX_AUDIO_BYTES) {
+    return NextResponse.json(
+      { error: "That recording is too long to process. Try recording in shorter sessions." },
+      { status: 413 }
+    );
   }
 
   const buffer = Buffer.from(await audioFile.arrayBuffer());
@@ -57,6 +75,19 @@ export async function POST(req: NextRequest) {
       .map((g) => `Speaker ${g.speaker}: ${g.text}`)
       .join("\n\n");
 
+    // Silent capture is the common failure here — the share dialog's audio
+    // toggle is easy to miss. Say so plainly instead of handing an empty
+    // string to the summarizer.
+    if (!transcript.trim()) {
+      return NextResponse.json(
+        {
+          error:
+            "No speech was found in the recording. This usually means the meeting audio wasn’t shared — in the Chrome dialog, pick the meeting tab and turn on “Also share tab audio”.",
+        },
+        { status: 422 }
+      );
+    }
+
     // Extract 2-3 sample quotes per speaker for identification
     const speakerSamples: Record<number, string[]> = {};
     for (const s of speakers) {
@@ -71,7 +102,10 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ transcript, speakers, speakerSamples });
   } catch (e) {
-    const message = e instanceof Error ? e.message : "Transcription failed";
-    return NextResponse.json({ error: message }, { status: 500 });
+    console.error("Deepgram request failed:", e);
+    return NextResponse.json(
+      { error: "Couldn’t transcribe the recording. You can retry without recording again." },
+      { status: 502 }
+    );
   }
 }
