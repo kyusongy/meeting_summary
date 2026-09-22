@@ -14,8 +14,15 @@ async function unwrap(res: Response) {
   return res.json();
 }
 
-export async function postForm(url: string, form: FormData) {
-  return unwrap(await fetch(url, { method: "POST", body: form }));
+/** Sends the blob as the raw body so the server can stream it onward. */
+export async function postBlob(url: string, blob: Blob) {
+  return unwrap(
+    await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": blob.type || "audio/webm" },
+      body: blob,
+    })
+  );
 }
 
 export async function postJson(url: string, body: unknown) {

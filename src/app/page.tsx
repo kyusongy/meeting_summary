@@ -9,7 +9,7 @@ import { ShareInstructions } from "@/components/ShareInstructions";
 import { ProcessingView } from "@/components/ProcessingView";
 import { SpeakerMap } from "@/components/SpeakerMap";
 import { SummaryView } from "@/components/SummaryView";
-import { postForm, postJson } from "@/lib/api";
+import { postBlob, postJson } from "@/lib/api";
 import { downloadBlob, today } from "@/lib/download";
 
 type AppState =
@@ -56,9 +56,7 @@ export default function Home() {
     setAppState("transcribing");
     setError("");
     try {
-      const form = new FormData();
-      form.append("audio", blob, "meeting.webm");
-      const data = await postForm("/api/transcribe", form);
+      const data = await postBlob("/api/transcribe", blob);
       setTranscript(data.transcript);
       setSpeakers(data.speakers ?? []);
       setSpeakerSamples(data.speakerSamples ?? {});

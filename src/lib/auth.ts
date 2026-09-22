@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import type { NextRequest } from "next/server";
 
 export const SESSION_COOKIE = "mn_session";
 
@@ -19,4 +20,11 @@ export function safeEqual(a: string, b: string): boolean {
   const bufB = Buffer.from(b);
   if (bufA.length !== bufB.length) return false;
   return timingSafeEqual(bufA, bufB);
+}
+
+/** False when no password is configured, so every caller fails closed. */
+export function isAuthed(req: NextRequest): boolean {
+  const password = process.env.APP_PASSWORD;
+  const cookie = req.cookies.get(SESSION_COOKIE)?.value;
+  return !!password && !!cookie && safeEqual(cookie, sessionToken(password));
 }
